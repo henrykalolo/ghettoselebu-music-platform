@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   TrendingUp, 
@@ -6,11 +6,8 @@ import {
   Album as AlbumIcon, 
   Radio, 
   Users, 
-  Play, 
   Download, 
-  Heart,
   Clock,
-  Star,
   ChevronRight,
   BarChart3
 } from 'lucide-react';
@@ -59,13 +56,7 @@ const Featured: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'all' | 'tracks' | 'albums' | 'mixtapes' | 'artists'>('all');
   const [timePeriod, setTimePeriod] = useState<'all' | 'week' | 'month' | 'year'>('all');
 
-  useEffect(() => {
-    fetchFeaturedContent();
-    fetchTopArtists();
-    fetchStats();
-  }, [timePeriod]);
-
-  const fetchFeaturedContent = async () => {
+  const fetchFeaturedContent = useCallback(async () => {
     try {
       const response = await apiService.get('/featured/', { 
         params: { period: timePeriod, limit: 10 } 
@@ -76,9 +67,9 @@ const Featured: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [timePeriod]);
 
-  const fetchTopArtists = async () => {
+  const fetchTopArtists = useCallback(async () => {
     try {
       const response = await apiService.get('/featured/artists/', { 
         params: { period: timePeriod, limit: 10 } 
@@ -87,16 +78,22 @@ const Featured: React.FC = () => {
     } catch (error) {
       console.error('Error fetching top artists:', error);
     }
-  };
+  }, [timePeriod]);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const response = await apiService.get('/featured/stats/');
       setStats(response.data);
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchFeaturedContent();
+    fetchTopArtists();
+    fetchStats();
+  }, [fetchFeaturedContent, fetchTopArtists, fetchStats]);
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -172,7 +169,7 @@ const Featured: React.FC = () => {
               <div>
                 <p className="text-gray-400 text-sm">Total Albums</p>
                 <p className="text-2xl font-bold text-white">{stats.albums.total_albums}</p>
-                <p className="text-blue-400 text-sm">{stats.albums.avg_tracks_per_album?.toFixed(1)} tracks avg</p>
+                <p className="text-blue-400 text-sm">{stats.albums.avg_tracks_per_album?.toFixed(1) || '0'} tracks avg</p>
               </div>
               <AlbumIcon className="w-8 h-8 text-blue-500" />
             </div>
@@ -183,7 +180,7 @@ const Featured: React.FC = () => {
               <div>
                 <p className="text-gray-400 text-sm">Total Mixtapes</p>
                 <p className="text-2xl font-bold text-white">{stats.mixtapes.total_mixtapes}</p>
-                <p className="text-yellow-400 text-sm">{stats.mixtapes.avg_tracks_per_mixtape?.toFixed(1)} tracks avg</p>
+                <p className="text-yellow-400 text-sm">{stats.mixtapes.avg_tracks_per_mixtape?.toFixed(1) || '0'} tracks avg</p>
               </div>
               <Radio className="w-8 h-8 text-yellow-500" />
             </div>
@@ -214,7 +211,7 @@ const Featured: React.FC = () => {
           ].map(({ key, label, icon: Icon }) => (
             <button
               key={key}
-              onClick={() => setActiveTab(key as any)}
+              onClick={() => setActiveTab(key as typeof activeTab)}
               className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors flex items-center space-x-2 ${
                 activeTab === key
                   ? 'border-purple-500 text-white'
@@ -252,7 +249,7 @@ const Featured: React.FC = () => {
                       <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
                         <span className="flex items-center">
                           <Download className="w-3 h-3 mr-1" />
-                          {formatNumber(track.download_count)}
+                          {formatNumber(track.download_count || 0)}
                         </span>
                       </div>
                     </div>
@@ -283,7 +280,7 @@ const Featured: React.FC = () => {
                       <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
                         <span className="flex items-center">
                           <Music className="w-3 h-3 mr-1" />
-                          {album.tracks_count} tracks
+                          {album.tracks_count || 0} tracks
                         </span>
                         <span className="flex items-center">
                           <Clock className="w-3 h-3 mr-1" />
@@ -318,7 +315,7 @@ const Featured: React.FC = () => {
                       <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
                         <span className="flex items-center">
                           <Download className="w-3 h-3 mr-1" />
-                          {formatNumber(mixtape.download_count)}
+                          {formatNumber(mixtape.download_count || 0)}
                         </span>
                         <span className="flex items-center">
                           <Clock className="w-3 h-3 mr-1" />
@@ -350,7 +347,7 @@ const Featured: React.FC = () => {
                   <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
                     <span className="flex items-center">
                       <Download className="w-3 h-3 mr-1" />
-                      {formatNumber(track.download_count)}
+                      {formatNumber(track.download_count || 0)}
                     </span>
                   </div>
                 </div>
@@ -376,7 +373,7 @@ const Featured: React.FC = () => {
                   <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
                     <span className="flex items-center">
                       <Music className="w-3 h-3 mr-1" />
-                      {album.tracks_count} tracks
+                      {album.tracks_count || 0} tracks
                     </span>
                     <span className="flex items-center">
                       <Clock className="w-3 h-3 mr-1" />
@@ -406,7 +403,7 @@ const Featured: React.FC = () => {
                   <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
                     <span className="flex items-center">
                       <Download className="w-3 h-3 mr-1" />
-                      {formatNumber(mixtape.download_count)}
+                      {formatNumber(mixtape.download_count || 0)}
                     </span>
                     <span className="flex items-center">
                       <Clock className="w-3 h-3 mr-1" />

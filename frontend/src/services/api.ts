@@ -82,6 +82,8 @@ export interface Track {
   format: string;
   is_explicit: boolean;
   download_count: number;
+  likes_count: number;
+  comments_count: number;
   created_at: string;
 }
 
@@ -240,6 +242,9 @@ export const authAPI = {
 };
 
 export const apiService = {
+  // Generic get method for custom endpoints
+  get: (url: string, config?: any) => api.get(url, config),
+  
   // Genres
   getGenres: () => api.get<PaginatedResponse<Genre>>('/genres/'),
   
