@@ -1,0 +1,187 @@
+name: Performance Monitoring
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run performance tests daily at 3 AM UTC
+    - cron: '0 3 * * *'
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install dependencies
+      run: |
+        cd frontend && npm ci
+    
+    - name: Build application
+      run: |
+        cd frontend && npm run build
+    
+    - name: Start application
+      run: |
+        cd frontend && npm install -g serve && serve -s build -l 3000 &
+        sleep 10
+    
+    - name: Run Lighthouse CI
+      run: |
+        npm install -g @lhci/cli@0.12.x
+        lhci autorun
+      env:
+        LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+        LHCI_TOKEN: ${{ secrets.LHCI_TOKEN }}
+    
+    - name: Upload Lighthouse results
+      uses: actions/upload-artifact@v4
+      with:
+        name: lighthouse-results
+        path: .lighthouseci
+
+  load-testing:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Start application
+      run: |
+        docker-compose up -d
+        sleep 30
+    
+    - name: Install k6
+      run: |
+        sudo gpg -k
+        sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+        echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+        sudo apt-get update
+        sudo apt-get install k6
+    
+    - name: Run load tests
+      run: |
+        k6 run --out json=results.json tests/load-test.js
+    
+    - name: Upload load test results
+      uses: actions/upload-artifact@v4
+      with:
+        name: load-test-results
+        path: results.json
+    
+    - name: Cleanup
+      run: |
+        docker-compose down
+
+  bundle-size:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install dependencies
+      run: |
+        cd frontend && npm ci
+    
+    - name: Build and analyze bundle size
+      run: |
+        cd frontend && npm run build
+        npx bundlesize
+    
+    - name: Comment PR with bundle size changes
+      uses: marocchino/sticky-pull-request-comment@v2
+      if: github.event_name == 'pull_request'
+      with:
+        message: |
+          ## Bundle Size Analysis
+          ```
+          $(cd frontend && npx bundlesize)
+          ```
+          This comment shows the bundle size changes compared to the main branch.
+
+  database-performance:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+        cache: 'pip'
+        cache-dependency-path: backend/requirements.txt
+    
+    - name: Install dependencies
+      run: |
+        cd backend && pip install -r requirements.txt
+        pip install django-debug-toolbar silk
+    
+    - name: Run database performance tests
+      run: |
+        cd backend
+        python manage.py test --settings=ghettoselebu.settings_test --verbosity=2
+    
+    - name: Generate database performance report
+      run: |
+        cd backend
+        cat > db_performance_test.py << 'EOF'
+        import django
+        from django.db import connection
+        from django.test.utils import setup_test_environment
+        setup_test_environment()
+
+        # Test database query performance
+        from django.test import TestCase
+        from music.models import Artist, Album, Track
+
+        # Create test data
+        artist = Artist.objects.create(name='Test Artist', slug='test-artist')
+        album = Album.objects.create(title='Test Album', slug='test-album', artist=artist)
+        track = Track.objects.create(title='Test Track', slug='test-track', album=artist)
+
+        # Test query performance
+        with connection.cursor() as cursor:
+            cursor.execute("EXPLAIN ANALYZE SELECT * FROM music_artist;")
+            print("Artist query analysis:")
+            for row in cursor.fetchall():
+                print(row)
+            
+            cursor.execute("EXPLAIN ANALYZE SELECT * FROM music_track WHERE music_track.artist_id = %s;", [artist.id])
+            print("Track query analysis:")
+            for row in cursor.fetchall():
+                print(row)
+        EOF
+        
+        python manage.py shell < db_performance_test.py > db_performance.log
+    
+    - name: Upload database performance report
+      uses: actions/upload-artifact@v4
+      with:
+        name: db-performance-report
+        path: backend/db_performance.log
