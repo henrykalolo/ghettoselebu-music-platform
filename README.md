@@ -1,6 +1,6 @@
 # Ghettoselebu - Music Streaming Platform
 
-A full-stack music streaming platform cloned from songslover.li, built with Django REST API backend and React TypeScript frontend.
+A full-stack music streaming platform , built with Django REST API backend and React TypeScript frontend.
 
 ## Features
 
